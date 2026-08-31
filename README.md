@@ -132,14 +132,18 @@ Push the tag; there is nothing to fill in:
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-The run tests, builds both architectures, attests them, then publishes the release with all three
-assets. A tag carrying a prerelease suffix — `v0.1.0-rc1` — publishes as a Pre-release rather than
-Latest.
+The run tests, builds both architectures, attests them, then leaves a **draft** release with all
+three assets. Review it on the Releases page and press **Publish release** — nothing reaches
+consumers until you do. Drafts are visible only to collaborators with push access;
+`gh release edit v0.1.0 --draft=false` publishes from a terminal instead. A tag carrying a
+prerelease suffix — `v0.1.0-rc1` — publishes as a Pre-release rather than Latest.
 
-The tag exists before the run does, so a failed run leaves a tag with no release attached. Nothing
-could have consumed it, so delete it, fix the cause and tag again:
+The tag exists before the run does, so a failed run leaves a tag with no release attached, and
+possibly a draft. Nothing could have consumed either, so clear them, fix the cause and tag again —
+the draft has to go too, or the next run refuses the tag as already released:
 
 ```sh
+gh release delete v0.1.0 --yes   # if a draft was created
 git push --delete origin v0.1.0
 git tag -d v0.1.0
 ```

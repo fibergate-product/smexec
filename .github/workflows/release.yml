@@ -61,7 +61,7 @@ jobs:
 
       # gh rather than a third-party action: this binary runs as PID 1 with
       # read access to every consumer secret, so the release path stays first-party.
-      - name: Publish release
+      - name: Draft release
         run: |
           # Checksums in the notes: consumers pin one in their Dockerfile, so it
           # should not require downloading SHA256SUMS to find.
@@ -88,7 +88,8 @@ jobs:
           #
           # Drafted first: gh creates the release and only then uploads, so
           # publishing in one call would leave a window where the release is
-          # public with its binaries still arriving.
+          # public with its binaries still arriving. The draft is also where this
+          # run stops on purpose - a human publishes it.
           # --notes is prepended to the generated changelog; --notes-file is not
           # documented as doing the same.
           gh release create "$VERSION" "${flags[@]}" --notes "$(cat notes.md)" \
@@ -96,11 +97,8 @@ jobs:
 
           assets=$(gh release view "$VERSION" --json assets --jq '.assets | length')
           if [[ "$assets" != 3 ]]; then
-            echo "::error::expected 3 assets on the draft, found $assets; leaving it unpublished"
+            echo "::error::expected 3 assets on the draft, found $assets"
             exit 1
           fi
 
-          # The tag already exists - this only makes the release public.
-          gh release edit "$VERSION" --draft=false
-
-          echo "::notice::released $VERSION"
+          echo "::notice::drafted $VERSION - review and publish it from the Releases page"
