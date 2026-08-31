@@ -1,8 +1,15 @@
 name: release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. v0.1.0'
+        required: true
+      prerelease:
+        description: 'Pre-release (not marked Latest)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -12,11 +19,33 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # Everything that can fail cheaply fails here, before a tag or a release
+      # exists. Tags are never moved, so a version spent on a broken run is gone.
+      - name: Validate version
+        run: |
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
+          if [[ ! "$VERSION" =~ $semver ]]; then
+            echo "::error::version must look like v1.2.3 or v1.2.3-rc1, got '$VERSION'"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::tag $VERSION already exists, and tags are never moved"
+            exit 1
+          fi
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "::error::a release or draft named $VERSION already exists"
+            exit 1
+          fi
 
       - run: go test ./...
 
@@ -25,7 +54,7 @@ jobs:
           mkdir -p dist
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-              go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
               -o "dist/smexec-linux-$arch" .
           done
           (cd dist && sha256sum smexec-linux-* > SHA256SUMS)
@@ -40,9 +69,7 @@ jobs:
 
       # gh rather than a third-party action: this binary runs as PID 1 with
       # read access to every consumer secret, so the release path stays first-party.
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish release
         run: |
           # Checksums in the notes: consumers pin one in their Dockerfile, so it
           # should not require downloading SHA256SUMS to find.
@@ -58,7 +85,30 @@ jobs:
             echo '```'
           } > notes.md
 
+          flags=(--draft --generate-notes)
+          # Without --target the tag would be cut from the head of the default
+          # branch, which may have moved since this run started - pin it to the
+          # commit that was actually built and attested.
+          flags+=(--target "$GITHUB_SHA")
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+
+          # Drafted first: gh creates the release and only then uploads, so
+          # publishing in one call would leave a window where the release is
+          # public with its binaries still arriving.
           # --notes is prepended to the generated changelog; --notes-file is not
           # documented as doing the same.
-          gh release create "$GITHUB_REF_NAME" --generate-notes --notes "$(cat notes.md)" \
+          gh release create "$VERSION" "${flags[@]}" --notes "$(cat notes.md)" \
             dist/smexec-linux-amd64 dist/smexec-linux-arm64 dist/SHA256SUMS
+
+          assets=$(gh release view "$VERSION" --json assets --jq '.assets | length')
+          if [[ "$assets" != 3 ]]; then
+            echo "::error::expected 3 assets on the draft, found $assets; leaving it unpublished"
+            exit 1
+          fi
+
+          # Publishing the draft is what creates the tag.
+          gh release edit "$VERSION" --draft=false
+
+          echo "::notice::released $VERSION"

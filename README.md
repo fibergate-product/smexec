@@ -120,3 +120,12 @@ go test ./...
 
 No AWS access needed: the Secrets Manager client is faked. The process tests re-execute the test
 binary, so `syscall.Exec` and the exit codes are exercised for real.
+
+### Releasing
+
+Actions → **release** → **Run workflow** → enter the version, e.g. `v0.1.0`, ticking Pre-release if
+it is one. The run tests, builds both architectures, attests them, then creates the tag and the
+release with all three assets.
+
+Nothing is created if the run fails, so a broken build never spends a version number. Tags are
+never moved: to fix a bad release, cut the next one.
