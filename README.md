@@ -21,7 +21,7 @@ Everything after the command is passed straight through as its arguments.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SMEXEC_SECRET_IDS` | — | Comma-separated secret ARNs or names. **Unset or empty: exec immediately and do nothing else.** |
+| `SMEXEC_SECRET_IDS` | — | **Required.** Comma-separated secret ARNs or names. Unset or empty is an error. |
 | `SMEXEC_REQUIRE` | — | Comma-separated keys that must resolve to a non-empty value. Exits non-zero listing every one that did not. |
 | `SMEXEC_TIMEOUT` | `5s` | Deadline covering all fetching. |
 
@@ -71,8 +71,11 @@ Listing the key in `SMEXEC_REQUIRE` turns that into a startup failure naming `FO
 
 ## Notes
 
-- **Inert without configuration.** No secret IDs means no AWS call and no `SMEXEC_REQUIRE` check, so
-  one image runs unchanged under Compose, in CI, and in an ECS debug task.
+- **Configuration is required.** No secret ids is an error, not a passthrough — starting a process
+  with no secrets is the quietest way to get this wrong. Anything meant to run without secrets
+  bypasses smexec rather than configuring it away: `entrypoint: []` in `compose.yaml`, `entryPoint`
+  in the ECS task definition, or setting the smexec `ENTRYPOINT` only on Lambda-backing stages.
+  `smexec --version` is the one path that works unconfigured.
 - **Fails closed.** Any fetch, parse or requirement failure exits non-zero rather than starting the
   process with missing secrets. Values may be strings, numbers or booleans; `null`, objects and
   arrays are errors, never silently empty strings.

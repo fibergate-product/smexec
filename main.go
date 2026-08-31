@@ -41,11 +41,20 @@ func run(args, env []string) int {
 		return 2
 	}
 
-	ids := splitList(lookupEnv(env, envSecretIDs))
+	// Required: starting a process with no secrets is the quietest way to get
+	// this wrong, so it is an error rather than a passthrough. Anything meant
+	// to run without secrets bypasses smexec instead of configuring it away.
+	raw := lookupEnv(env, envSecretIDs)
+	ids := splitList(raw)
 	if len(ids) == 0 {
-		// Inert: no AWS call, and no SMEXEC_REQUIRE check either. This is what
-		// lets one image serve compose, CI and the ECS debug task unmodified.
-		return execute(args, env)
+		if raw == "" {
+			logf("%s is not set", envSecretIDs)
+		} else {
+			// A construct rendering an empty join gives " , ," - saying "not
+			// set" would send someone hunting the wrong problem.
+			logf("%s contains no secret ids: %q", envSecretIDs, raw)
+		}
+		return 1
 	}
 
 	timeout := defaultTimeout
