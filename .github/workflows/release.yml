@@ -63,9 +63,9 @@ jobs:
       # With no predicate inputs this generates SLSA build provenance: signed,
       # verifiable proof of which workflow, commit and source tree produced
       # these bytes. Consumers check it with `gh attestation verify`.
-      # - uses: actions/attest@v4
-      #   with:
-      #     subject-path: dist/smexec-linux-*
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/smexec-linux-*
 
       # gh rather than a third-party action: this binary runs as PID 1 with
       # read access to every consumer secret, so the release path stays first-party.
