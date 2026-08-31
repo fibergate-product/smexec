@@ -1,15 +1,9 @@
 name: release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release, e.g. v0.1.0'
-        required: true
-      prerelease:
-        description: 'Pre-release (not marked Latest)'
-        type: boolean
-        default: false
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -20,8 +14,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.version }}
-      PRERELEASE: ${{ inputs.prerelease }}
+      VERSION: ${{ github.ref_name }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
@@ -29,19 +22,18 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Everything that can fail cheaply fails here, before a tag or a release
-      # exists. Tags are never moved, so a version spent on a broken run is gone.
+      # Everything that can fail cheaply fails here, before a release exists.
+      # The tag is already pushed by the time this runs, so a version spent on a
+      # broken run is only recoverable by deleting the tag - see README.
       - name: Validate version
         run: |
+          # The 'v*' trigger filter also matches vfoo, so assert the shape too.
           semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'
           if [[ ! "$VERSION" =~ $semver ]]; then
             echo "::error::version must look like v1.2.3 or v1.2.3-rc1, got '$VERSION'"
             exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "::error::tag $VERSION already exists, and tags are never moved"
-            exit 1
-          fi
+          # Catches a draft left behind by an earlier failed run on this tag.
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "::error::a release or draft named $VERSION already exists"
             exit 1
@@ -86,14 +78,14 @@ jobs:
           } > notes.md
 
           flags=(--draft --generate-notes)
-          # Without --target the tag would be cut from the head of the default
-          # branch, which may have moved since this run started - pin it to the
-          # commit that was actually built and attested.
-          flags+=(--target "$GITHUB_SHA")
-          if [[ "$PRERELEASE" == "true" ]]; then
+          # A hyphen introduces a semver prerelease suffix, so v1.2.3-rc1 is not Latest.
+          if [[ "$VERSION" == *-* ]]; then
             flags+=(--prerelease)
           fi
 
+          # No --target: that only applies when gh has to create the tag, and here
+          # the tag is the trigger and already points at the commit being built.
+          #
           # Drafted first: gh creates the release and only then uploads, so
           # publishing in one call would leave a window where the release is
           # public with its binaries still arriving.
@@ -108,7 +100,7 @@ jobs:
             exit 1
           fi
 
-          # Publishing the draft is what creates the tag.
+          # The tag already exists - this only makes the release public.
           gh release edit "$VERSION" --draft=false
 
           echo "::notice::released $VERSION"

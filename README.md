@@ -113,7 +113,7 @@ RUN curl -fsSL -o /usr/local/bin/smexec \
 ```
 
 Releases carry `smexec-linux-{amd64,arm64}`, `SHA256SUMS` and provenance, and repeat the checksums
-in the notes. Tags are never moved.
+in the notes. Published tags are never moved.
 
 ## Development
 
@@ -126,9 +126,22 @@ binary, so `syscall.Exec` and the exit codes are exercised for real.
 
 ### Releasing
 
-Actions → **release** → **Run workflow** → enter the version, e.g. `v0.1.0`, ticking Pre-release if
-it is one. The run tests, builds both architectures, attests them, then creates the tag and the
-release with all three assets.
+Push the tag; there is nothing to fill in:
 
-Nothing is created if the run fails, so a broken build never spends a version number. Tags are
-never moved: to fix a bad release, cut the next one.
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+The run tests, builds both architectures, attests them, then publishes the release with all three
+assets. A tag carrying a prerelease suffix — `v0.1.0-rc1` — publishes as a Pre-release rather than
+Latest.
+
+The tag exists before the run does, so a failed run leaves a tag with no release attached. Nothing
+could have consumed it, so delete it, fix the cause and tag again:
+
+```sh
+git push --delete origin v0.1.0
+git tag -d v0.1.0
+```
+
+A *published* tag is never moved: to fix a bad release, cut the next one.
